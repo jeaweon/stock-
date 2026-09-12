@@ -324,25 +324,30 @@ vol_colors = ['#e15241' if c >= o else '#267af3' for c, o in zip(df_selected['Cl
 fig.add_trace(go.Bar(x=df_selected.index, y=df_selected['Volume'], name="거래량", marker_color=vol_colors), row=2, col=1)
 fig.add_trace(go.Scatter(x=df_selected.index, y=df_selected['Vol_Avg_90'], line=dict(color='#ff3b30', width=1), name="90일 평균 거래량"), row=2, col=1)
 
-# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정
+# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정 (글자색 검은색 추가)
 fig.update_layout(
     xaxis_rangeslider_visible=False,
     height=850,
-    dragmode='pan',  # 마우스로 끌어서 좌우 이동 가능
+    dragmode='pan',
     margin=dict(l=20, r=20, t=30, b=20),
     plot_bgcolor='#ffffff',
     paper_bgcolor='#ffffff',
+    font=dict(color='#000000'),  # 👈 차트 전체 기본 글자색을 검은색으로 고정
     hovermode="x unified"
 )
 
-# 3. X축 기본 표시 범위 설정 (최근 30일 확대)
+# 3. X/Y축 표시 범위 및 눈금(Tick) 글자색 검은색으로 확정
 fig.update_xaxes(
     range=[initial_start_date, initial_end_date],
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7'
+    showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
+    tickfont=dict(color='#000000')  # 👈 X축 날짜 글자색 검은색
 )
-fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False)
+fig.update_yaxes(
+    showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False,
+    tickfont=dict(color='#000000')  # 👈 Y축 가격 글자색 검은색
+)
 
-# 4. 마우스 휠 확대/축소 옵션(scrollZoom) 추가
+# 4. 마우스 휠 확대/축소 옵션
 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # ---------------------------------------------------------
