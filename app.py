@@ -255,7 +255,7 @@ if st.button("제미나이 AI 지수 분석 실행"):
     if client:
         with st.spinner("30년차 트레이더 분석 중..."):
             prompt = f"지수 현황: {indices}. 오늘 장 마감 후 시장 요인을 3줄로 날카롭게 요약해라."
-            res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=types.GenerateContentConfig(system_instruction=TRADER_SYSTEM_INSTRUCTION))
+            res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt, config=types.GenerateContentConfig(system_instruction=TRADER_SYSTEM_INSTRUCTION))
             st.info(res.text)
     else:
         st.error("Gemini API 키가 연결되지 않았습니다.")
@@ -395,7 +395,7 @@ if st.button(f"🎯 {selected_stock} AI 진단 받아보기", key=f"btn_{selecte
             """
 
             res = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=TRADER_SYSTEM_INSTRUCTION,
