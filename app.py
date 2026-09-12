@@ -263,7 +263,7 @@ if st.button("제미나이 AI 지수 분석 실행"):
                 """
 
                 res = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.6-flash",
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=TRADER_SYSTEM_INSTRUCTION
@@ -413,7 +413,7 @@ if st.button(f"🎯 {selected_stock} AI 진단 받아보기", key=f"btn_{selecte
             """
 
             res = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=TRADER_SYSTEM_INSTRUCTION,
