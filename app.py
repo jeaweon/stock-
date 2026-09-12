@@ -290,6 +290,13 @@ st.metric(
 
 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
 
+fig = make_subplots(
+    rows=2, cols=1, 
+    shared_xaxes=True, 
+    vertical_spacing=0.03, 
+    row_heights=[0.88, 0.12]  # 캔들 88%, 거래량 12% 비율로 할당
+)
+
 # 캔들스틱 (네이버 증권 스타일: 상승=빨강 #e15241, 하락=파랑 #267af3)
 fig.add_trace(go.Candlestick(
     x=df_selected.index,
