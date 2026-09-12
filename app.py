@@ -263,7 +263,7 @@ if st.button("제미나이 AI 지수 분석 실행"):
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 3. 차트 시각화 UI (주말 빈칸 완벽 제거 & 캔들 밀착 버전)
+# 3. 차트 시각화 UI (네이버 증권 스타일: 초기 확대 + 좌우 드래그 + 휠 스크롤)
 # ---------------------------------------------------------
 st.subheader("📈 설정 종목 일봉 분석 (최근 90일)")
 selected_stock = st.selectbox("종목 선택", target_symbols)
@@ -273,86 +273,11 @@ curr_price = df_selected['Close'].iloc[-1]
 prev_price = df_selected['Close'].iloc[-2]
 price_change = ((curr_price - prev_price) / prev_price) * 100
 
-# ★ 핵심 수정: 날짜를 '문자열'로 변환하여 빈칸(주말/휴장일) 자체를 원천 차단
-dt_strings = df_selected.index.strftime('%Y-%m-%d')
-
-# 최고/최저가 날짜도 문자열로 변환
-max_idx = df_selected['High'].idxmax().strftime('%Y-%m-%d')
+max_idx = df_selected['High'].idxmax()
 max_price = df_selected['High'].max()
-min_idx = df_selected['Low'].idxmin().strftime('%Y-%m-%d')
+min_idx = df_selected['Low'].idxmin()
 min_price = df_selected['Low'].min()
 
-# 초기 줌 범위 설정
-initial_start_date = dt_strings[-30] if len(dt_strings) >= 30 else dt_strings[0]
-initial_end_date = dt_strings[-1]
-
-st.metric(
-    label=f"{selected_stock} 현재 가격",
-    value=f"{int(curr_price):,} 원" if selected_stock == "이더리움" else f"${curr_price:,.2f}",
-    delta=f"{price_change:+.2f}%"
-)
-
-# 차트 비율 (캔들 88% : 거래량 12%)
-fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.88, 0.12])
-
-# ★ 모든 차트의 x값에 df_selected.index 대신 dt_strings(문자열) 적용
-fig.add_trace(go.Candlestick(
-    x=dt_strings,
-    open=df_selected['Open'], high=df_selected['High'],
-    low=df_selected['Low'], close=df_selected['Close'],
-    name="주가",
-    increasing_line_color='#e15241', increasing_fillcolor='#e15241',
-    decreasing_line_color='#267af3', decreasing_fillcolor='#267af3'
-), row=1, col=1)
-
-fig.add_trace(go.Scatter(x=dt_strings, y=df_selected['MA5'], line=dict(color='#34c759', width=1.5), name="MA5"), row=1, col=1)
-fig.add_trace(go.Scatter(x=dt_strings, y=df_selected['MA20'], line=dict(color='#ff9500', width=1.5), name="MA20"), row=1, col=1)
-fig.add_trace(go.Scatter(x=dt_strings, y=df_selected['BB_Upper'], line=dict(color='#af52de', width=1, dash='dash'), name="BB 상한선"), row=1, col=1)
-fig.add_trace(go.Scatter(x=dt_strings, y=df_selected['BB_Lower'], line=dict(color='#af52de', width=1, dash='dash'), name="BB 하한선"), row=1, col=1)
-
-fig.add_hline(y=vp_top_selected, line_color="#8e8e93", line_dash="dot", annotation_text=f"매물대 상단 ({vp_top_selected:,.2f})", row=1, col=1)
-
-fig.add_annotation(
-    x=max_idx, y=max_price, text=f"최고 {max_price:,.2f}",
-    showarrow=True, arrowhead=2, arrowcolor="#e15241", ax=0, ay=-25, row=1, col=1
-)
-fig.add_annotation(
-    x=min_idx, y=min_price, text=f"최저 {min_price:,.2f}",
-    showarrow=True, arrowhead=2, arrowcolor="#267af3", ax=0, ay=25, row=1, col=1
-)
-
-vol_colors = ['#e15241' if c >= o else '#267af3' for c, o in zip(df_selected['Close'], df_selected['Open'])]
-fig.add_trace(go.Bar(x=dt_strings, y=df_selected['Volume'], name="거래량", marker_color=vol_colors), row=2, col=1)
-fig.add_trace(go.Scatter(x=dt_strings, y=df_selected['Vol_Avg_90'], line=dict(color='#ff3b30', width=1), name="90일 평균 거래량"), row=2, col=1)
-
-fig.update_layout(
-    xaxis_rangeslider_visible=False,
-    height=850,
-    dragmode='pan',
-    margin=dict(l=20, r=20, t=30, b=20),
-    plot_bgcolor='#ffffff',
-    paper_bgcolor='#ffffff',
-    font=dict(color='#000000'),             
-    legend=dict(font=dict(color='#000000')), 
-    hoverlabel=dict(bgcolor='#ffffff', font_color='#000000', bordercolor='#cccccc'),
-    hovermode="x unified",
-    bargap=0.05  # 👈 0에 가깝게 설정하여 봉을 딱 붙이되, 너무 떡져 보이지 않도록 최소한의 테두리만 남김
-)
-
-# ★ X축을 문자열 카테고리로 인식시켜 지표 끊김 현상과 빈 공간을 100% 제거
-fig.update_xaxes(
-    type='category', 
-    range=[initial_start_date, initial_end_date],
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
-    tickmode='auto', nticks=10,  # X축 날짜 텍스트가 너무 겹치지 않게 간격 조절
-    tickfont=dict(color='#000000')
-)
-fig.update_yaxes(
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False,
-    tickfont=dict(color='#000000')
-)
-
-st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 # 1. 초기 줌 범위 설정 (전체 90일 데이터 중 최근 30일 봉만 확대)
 initial_start_date = df_selected.index[-30]
 initial_end_date = df_selected.index[-1]
@@ -364,13 +289,6 @@ st.metric(
 )
 
 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-
-fig = make_subplots(
-    rows=2, cols=1, 
-    shared_xaxes=True, 
-    vertical_spacing=0.03, 
-    row_heights=[0.88, 0.12]  # 캔들 88%, 거래량 12% 비율로 할당
-)
 
 # 캔들스틱 (네이버 증권 스타일: 상승=빨강 #e15241, 하락=파랑 #267af3)
 fig.add_trace(go.Candlestick(
@@ -406,42 +324,26 @@ vol_colors = ['#e15241' if c >= o else '#267af3' for c, o in zip(df_selected['Cl
 fig.add_trace(go.Bar(x=df_selected.index, y=df_selected['Volume'], name="거래량", marker_color=vol_colors), row=2, col=1)
 fig.add_trace(go.Scatter(x=df_selected.index, y=df_selected['Vol_Avg_90'], line=dict(color='#ff3b30', width=1), name="90일 평균 거래량"), row=2, col=1)
 
-# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정 (bargap 추가)
+# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정
 fig.update_layout(
     xaxis_rangeslider_visible=False,
     height=850,
-    dragmode='pan',
+    dragmode='pan',  # 마우스로 끌어서 좌우 이동 가능
     margin=dict(l=20, r=20, t=30, b=20),
     plot_bgcolor='#ffffff',
     paper_bgcolor='#ffffff',
-    font=dict(color='#000000'),             
-    legend=dict(font=dict(color='#000000')), 
-    hoverlabel=dict(
-        bgcolor='#ffffff',
-        font_color='#000000',
-        bordercolor='#cccccc'
-    ),
-    hovermode="x unified",
-    bargap=0.02  # 👈 캔들과 거래량 막대 사이의 기본 여백을 2%로 줄여 거의 완벽하게 딱 붙입니다.
+    hovermode="x unified"
 )
 
-# 3. X/Y축 표시 범위 및 눈금 (주말 빈칸 강제 제거)
+# 3. X축 기본 표시 범위 설정 (최근 30일 확대)
 fig.update_xaxes(
     range=[initial_start_date, initial_end_date],
-    rangebreaks=[
-        dict(bounds=["sat", "mon"])  # 👈 토요일~월요일 사이의 빈칸(휴장일)을 강제로 잘라내어 캔들을 밀착시킵니다.
-    ],
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
-    tickfont=dict(color='#000000')
+    showgrid=True, gridwidth=1, gridcolor='#f2f2f7'
 )
-fig.update_yaxes(
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False,
-    tickfont=dict(color='#000000')
-)
+fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False)
 
-# 4. 마우스 휠 확대/축소 옵션
+# 4. 마우스 휠 확대/축소 옵션(scrollZoom) 추가
 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
-
 # ---------------------------------------------------------
 # 3-1. 선택 종목 Gemini AI 진단 섹션
 # ---------------------------------------------------------
