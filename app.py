@@ -324,7 +324,7 @@ vol_colors = ['#e15241' if c >= o else '#267af3' for c, o in zip(df_selected['Cl
 fig.add_trace(go.Bar(x=df_selected.index, y=df_selected['Volume'], name="거래량", marker_color=vol_colors), row=2, col=1)
 fig.add_trace(go.Scatter(x=df_selected.index, y=df_selected['Vol_Avg_90'], line=dict(color='#ff3b30', width=1), name="90일 평균 거래량"), row=2, col=1)
 
-# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정 (글자색 검은색 추가)
+# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정 (범례 및 말풍선 글자색 추가)
 fig.update_layout(
     xaxis_rangeslider_visible=False,
     height=850,
@@ -332,7 +332,13 @@ fig.update_layout(
     margin=dict(l=20, r=20, t=30, b=20),
     plot_bgcolor='#ffffff',
     paper_bgcolor='#ffffff',
-    font=dict(color='#000000'),  # 👈 차트 전체 기본 글자색을 검은색으로 고정
+    font=dict(color='#000000'),             # 기본 폰트 검은색
+    legend=dict(font=dict(color='#000000')), # 👈 우측 상단 지표 설명(범례) 검은색 강제 지정
+    hoverlabel=dict(                         # 👈 마우스 올렸을 때 뜨는 정보창 배경/글자색 지정
+        bgcolor='#ffffff',
+        font_color='#000000',
+        bordercolor='#cccccc'
+    ),
     hovermode="x unified"
 )
 
