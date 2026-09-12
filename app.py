@@ -347,7 +347,7 @@ fig.update_layout(
         bordercolor='#cccccc'
     ),
     hovermode="x unified",
-    bargap=0.02  # 👈 캔들과 거래량 막대 사이의 기본 여백을 2%로 줄여 거의 완벽하게 딱 붙입니다.
+    bargap=0.00  # 👈 캔들과 거래량 막대 사이의 기본 여백을 2%로 줄여 거의 완벽하게 딱 붙입니다.
 )
 
 # 3. X/Y축 표시 범위 및 눈금 (주말 빈칸 강제 제거)
