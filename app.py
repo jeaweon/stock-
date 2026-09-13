@@ -235,6 +235,20 @@ class SimulatedTrader:
         })
 
 # 세션 상태 관리
+# ---------------------------------------------------------
+# 세션 상태 관리 및 초기화 기능
+# ---------------------------------------------------------
+# 사이드바에 계좌 초기화 버튼 추가
+with st.sidebar:
+    if st.button("🔄 모의투자 계좌 초기화"):
+        st.session_state.clear()
+        st.rerun() # 최신 Streamlit 버전 (구버전일 경우 st.experimental_rerun())
+
+if "trader" not in st.session_state:
+    st.session_state.trader = SimulatedTrader()
+
+trader = st.session_state.trader
+
 if "trader" not in st.session_state:
     st.session_state.trader = SimulatedTrader()
 
