@@ -36,6 +36,19 @@ TRADER_SYSTEM_INSTRUCTION = """
 # 데이터 수집 및 계산 함수
 # ---------------------------------------------------------
 @st.cache_data(ttl=3600)
+def fetch_usd_krw():
+    """원/달러 환율 데이터를 가져오는 함수"""
+    fx_df = yf.download("KRW=X", period="120d", interval="1d")
+    if isinstance(fx_df.columns, pd.MultiIndex):
+        fx_df.columns = fx_df.columns.droplevel(1)
+        
+    # 날짜 인덱스의 시간대(timezone) 제거 (주식/코인 데이터와 병합 시 오류 방지)
+    if fx_df.index.tz is not None:
+        fx_df.index = fx_df.index.tz_localize(None)
+        
+    return fx_df['Close']
+
+@st.cache_data(ttl=3600)
 def fetch_stock_data(symbol_name):
     symbol_map = {
         "이더리움": "ETH-USD",
@@ -52,11 +65,26 @@ def fetch_stock_data(symbol_name):
     }
     ticker = symbol_map.get(symbol_name, symbol_name)
     
+    # 1. 주식/코인 데이터 다운로드
     df = yf.download(ticker, period="120d", interval="1d")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
     df = df.dropna()
+    
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
 
+    # 2. 환율 데이터 가져와서 날짜별로 매칭 (주말 코인장은 금요일 환율로 채움)
+    fx_series = fetch_usd_krw()
+    df = df.join(fx_series.rename("FX_Rate"), how="left")
+    df['FX_Rate'] = df['FX_Rate'].ffill().bfill() 
+
+    # 3. 핵심: 달러(USD) 가격 * 원/달러 환율 = 실제 원화(KRW) 가격으로 변환
+    # 이더리움(약 3000달러 * 1350원 = 약 400만 원)으로 정상 변환됩니다.
+    for col in ['Open', 'High', 'Low', 'Close']:
+        df[col] = df[col] * df['FX_Rate']
+
+    # 4. 원화로 변환된 가격을 바탕으로 보조 지표 계산
     df['MA5'] = df['Close'].rolling(window=5).mean()
     df['MA20'] = df['Close'].rolling(window=20).mean()
 
@@ -71,7 +99,6 @@ def fetch_stock_data(symbol_name):
     vp_top = bin_edges[np.argmax(counts) + 1]
 
     return df_90, vp_top
-
 @st.cache_data(ttl=3600)
 def fetch_market_indices():
     tickers = {"나스닥": "^IXIC", "S&P500": "^GSPC", "코스피": "^KS11", "이더리움": "ETH-USD", "원/달러 환율": "KRW=X"}
@@ -302,7 +329,7 @@ initial_end_date = df_selected.index[-1]
 
 st.metric(
     label=f"{selected_stock} 현재 가격",
-    value=f"{int(curr_price):,} 원" if selected_stock == "이더리움" else f"${curr_price:,.2f}",
+    value=f"{int(curr_price):,} 원",
     delta=f"{price_change:+.2f}%"
 )
 
