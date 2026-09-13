@@ -1,4 +1,5 @@
 import os
+import json
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -114,14 +115,39 @@ def fetch_market_indices():
     return data
 
 # ---------------------------------------------------------
-# 가상 매매 엔진 Class
+# 가상 매매 엔진 Class (영구 보존 버전)
 # ---------------------------------------------------------
 class SimulatedTrader:
-    def __init__(self, initial_balance=20000000):
-        self.cash = initial_balance
+    def __init__(self, initial_balance=20000000, save_file="trader_state.json"):
+        self.save_file = save_file
         self.initial_balance = initial_balance
+        self.cash = initial_balance
         self.positions = {}
         self.trade_logs = []
+        
+        # 객체가 생성될 때 저장된 파일이 있으면 불러오기
+        self._load_from_file()
+
+    def _save_to_file(self):
+        """현재 계좌 상태와 매매 일지를 JSON 파일로 저장"""
+        state = {
+            "cash": self.cash,
+            "initial_balance": self.initial_balance,
+            "positions": self.positions,
+            "trade_logs": self.trade_logs
+        }
+        with open(self.save_file, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=4)
+
+    def _load_from_file(self):
+        """저장된 JSON 파일에서 계좌 상태와 매매 일지 불러오기"""
+        if os.path.exists(self.save_file):
+            with open(self.save_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                self.cash = state.get("cash", self.initial_balance)
+                self.initial_balance = state.get("initial_balance", self.initial_balance)
+                self.positions = state.get("positions", {})
+                self.trade_logs = state.get("trade_logs", [])
 
     def execute_strategy(self, symbol, df, vp_top):
         latest = df.iloc[-1]
@@ -152,28 +178,14 @@ class SimulatedTrader:
                 self._sell(symbol, price, f"BB {pos['bb_stage']}단계 목표 수익률({target}%) 달성 매도")
                 return
 
-       # (기존) 볼린저 밴드 하한선 물타기 로직 및 익절 로직 유지...
-        
-        # ---------------------------------------------------------
-        # [신규 최우선 조건 1] VCP (변동성 수축 후 폭발)
-        # ---------------------------------------------------------
-        # 전일 기준 볼린저 밴드 폭이 10% 미만(0.10)으로 극도로 수축되었고, 
-        # 당일 거래량이 90일 평균의 3배 이상 터지며 볼린저 밴드 상단 돌파
+        # VCP 및 매물대 풀백 등 신규 매수 조건
         prev_bb_width = df['BB_Width'].iloc[-2]
         cond_vcp = (prev_bb_width < 0.10) and (vol >= vol_avg_90 * 3.0) and (price > latest['BB_Upper'])
 
-        # ---------------------------------------------------------
-        # [신규 최우선 조건 2] 핵심 매물대 풀백 (Pullback & Bounce)
-        # ---------------------------------------------------------
-        # 당일 저가가 매물대 상단(vp_top)의 2% 이내로 근접하여 지지 테스트를 마치고,
-        # 종가가 시가보다 높은 양봉(Close > Open)으로 마감하며 5일선이 20일선 위에 있을 때
         is_yangbong = latest['Close'] > latest['Open']
         touched_support = latest['Low'] <= (vp_top * 1.02)
         cond_pullback = is_yangbong and touched_support and (price > vp_top) and (ma5 > ma20)
 
-        # ---------------------------------------------------------
-        # (기존) 일반 돌파 매수 조건
-        # ---------------------------------------------------------
         cond1 = (price > vp_top) and (ma5 > ma20)
         cond2 = (vol > vol_avg_90 * 1.5) and (ma5 > ma20)
         
@@ -191,19 +203,16 @@ class SimulatedTrader:
             if ma20 > ma5:
                 self._sell(symbol, price, "MA20 > MA5 데드크로스 매도")
 
-    # (SimulatedTrader 클래스 내부의 기존 _buy, _sell 함수 덮어쓰기)
     def _buy(self, symbol, price, amount, reason, bb_stage):
         if amount < 10000: return
         qty = amount / price
         pos = self.positions.get(symbol, {'qty': 0, 'avg_price': 0.0, 'bb_stage': 0})
         
-        # 최초 매수 시점의 전략(reason)을 포지션에 기록하여 승률 추적에 사용
         entry_strategy = reason if pos['qty'] == 0 else pos.get('entry_strategy', reason)
-        
         total_qty = pos['qty'] + qty
         total_cost = (pos['qty'] * pos['avg_price']) + amount
-        self.cash -= amount
         
+        self.cash -= amount
         self.positions[symbol] = {
             'qty': total_qty, 
             'avg_price': total_cost / total_qty, 
@@ -216,10 +225,12 @@ class SimulatedTrader:
             "수량": round(qty, 4), "수익률(%)": 0.0, 
             "진입 전략": entry_strategy, "상세 사유": reason
         })
+        self._save_to_file()  # 상태 변경 후 즉시 저장
 
     def _sell(self, symbol, price, reason):
         pos = self.positions.get(symbol)
         if not pos or pos['qty'] == 0: return
+        
         sell_val = pos['qty'] * price
         cost_val = pos['qty'] * pos['avg_price']
         roi = ((sell_val - cost_val) / cost_val) * 100
@@ -233,6 +244,7 @@ class SimulatedTrader:
             "수량": round(pos['qty'], 4), "수익률(%)": round(roi, 2), 
             "진입 전략": entry_strategy, "상세 사유": reason
         })
+        self._save_to_file()  # 상태 변경 후 즉시 저장
 
 # 세션 상태 관리
 # ---------------------------------------------------------
