@@ -319,29 +319,29 @@ for idx, (name, val) in enumerate(indices.items()):
 
 st.markdown("---")
 st.markdown("### 📊 장 마감 제미나이 매크로 시황 분석")
-
 if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
     if client:
-        with st.spinner("30년차 트레이더가 최신 뉴스 및 글로벌 매크로 지표를 분석 중입니다..."):
+        with st.spinner("30년차 트레이더가 최신 글로벌 매크로 지표를 분석 중입니다..."):
             try:
                 prompt = f"""
                 현재 주요 시장 지수 현황: {indices}
 
-                위 지수 데이터를 바탕으로, 구글 검색을 활용하여 오늘 시장에 영향을 미친 핵심 요인들을 심층 분석해라.
+                위 지수 데이터를 바탕으로 오늘 시장에 영향을 미친 핵심 요인들을 분석해라.
                 아래 3가지 목차로 나누어 전문 트레이더의 시각으로 작성해라:
 
-                1. 🌐 글로벌 매크로 & 통화정책: 미국 연준(Fed)의 금리 동향 및 주요 경제 지표 현황
-                2. 📰 오늘의 핵심 마켓 뷰: 오늘 주식 시장을 주도한 주요 뉴스와 섹터 흐름
-                3. 💡 트레이더의 인사이트: 앞으로 며칠간 시장을 대하는 투자 전략과 경계해야 할 리스크
+                1. 🌐 글로벌 매크로 현황
+                2. 📰 오늘의 핵심 마켓 뷰
+                3. 💡 트레이더의 인사이트
                 """
 
                 res = client.models.generate_content(
-                    model="gemini-3.6-flash",
+                    model="gemini-3.6-flash", # 질문자님의 기존 모델명 유지
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=TRADER_SYSTEM_INSTRUCTION,
                         temperature=0.5,
-                        tools=[{"google_search": {}}]  # 최신 정보 검색 기능
+                        max_output_tokens=500 # 1500에서 500으로 축소하여 자원 절약
+                        # tools 부분 삭제하여 API 과부하 방지
                     )
                 )
                 st.info(res.text)
@@ -351,8 +351,6 @@ if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
                 st.exception(e)
     else:
         st.error("Gemini API 키가 연결되지 않았습니다.")
-
-st.markdown("---")
 
 # ---------------------------------------------------------
 # 3. 차트 시각화 UI (네이버 증권 스타일: 초기 확대 + 좌우 드래그 + 휠 스크롤)
