@@ -16,7 +16,7 @@ from google.genai import types
 st.set_page_config(page_title="Gemini 30년차 트레이더 모의투자", layout="wide")
 st.title("⚡ Gemini 30년차 전문 트레이더 모의투자 시스템")
 
-st.caption("🔄 데이터 갱신 주기: 1시간 단위 자동 업데이트")
+st.caption("🔄 데이터 갱신 주기: 수동 업데이트 (사이드바의 '최신 주가 데이터 불러오기' 버튼 클릭)")
 
 # API 키 가져오기
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
@@ -36,7 +36,7 @@ TRADER_SYSTEM_INSTRUCTION = """
 # ---------------------------------------------------------
 # 데이터 수집 및 계산 함수
 # ---------------------------------------------------------
-@st.cache_data(ttl=3600)
+@st.cache_data
 def fetch_usd_krw():
     """원/달러 환율 데이터를 가져오는 함수"""
     fx_df = yf.download("KRW=X", period="120d", interval="1d")
@@ -49,7 +49,7 @@ def fetch_usd_krw():
         
     return fx_df['Close']
 
-@st.cache_data(ttl=3600)
+@st.cache_data
 def fetch_stock_data(symbol_name):
     symbol_map = {
         "이더리움": "ETH-USD",
@@ -100,7 +100,7 @@ def fetch_stock_data(symbol_name):
     vp_top = bin_edges[np.argmax(counts) + 1]
 
     return df_90, vp_top
-@st.cache_data(ttl=3600)
+@st.cache_data
 def fetch_market_indices():
     tickers = {"나스닥": "^IXIC", "S&P500": "^GSPC", "코스피": "^KS11", "이더리움": "ETH-USD", "원/달러 환율": "KRW=X"}
     data = {}
@@ -248,17 +248,27 @@ class SimulatedTrader:
 
 # 세션 상태 관리
 # ---------------------------------------------------------
-# ---------------------------------------------------------
-# 세션 상태 관리 및 완벽 초기화 (파일 삭제 포함)
+# 세션 상태 관리 및 완벽 초기화 (데이터 수동 갱신 포함)
 # ---------------------------------------------------------
 with st.sidebar:
+    st.markdown("### ⚙️ 시스템 관리")
+    
+    # 1. 주가 데이터 수동 갱신 버튼 (추가됨)
+    if st.button("📈 최신 주가 데이터 불러오기"):
+        # 저장된 데이터 캐시(기억)를 모두 강제 삭제
+        fetch_usd_krw.clear()
+        fetch_stock_data.clear()
+        fetch_market_indices.clear()
+        st.success("최신 주가 데이터를 성공적으로 불러왔습니다!")
+        st.rerun()
+
+    st.markdown("---")
+    
+    # 2. 계좌 완전 초기화 버튼 (기존 유지)
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
-        # 1. 저장된 세이브 파일 지우기
         if os.path.exists("trader_state.json"):
             os.remove("trader_state.json")
-        # 2. 현재 메모리(세션) 지우기
         st.session_state.clear()
-        # 3. 화면 새로고침
         st.rerun()
 
 if "trader" not in st.session_state:
