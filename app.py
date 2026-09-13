@@ -306,8 +306,20 @@ c4.metric("수익률", f"{total_roi:.2f} %", delta=f"{total_roi:.2f}%")
 
 st.markdown("---")
 
+# ---------------------------------------------------------
 # 2. 시장 지수 및 Gemini 시황 분석 UI
+# ---------------------------------------------------------
+st.subheader("🌐 대표 시장 지수")
+indices = fetch_market_indices()
+idx_cols = st.columns(len(indices))
+
+# 지수(나스닥 등)와 환율/이더리움 화면에 렌더링
+for idx, (name, val) in enumerate(indices.items()):
+    idx_cols[idx].metric(label=name, value=f"{val['price']:,.2f}", delta=f"{val['change']:.2f}%")
+
+st.markdown("---")
 st.markdown("### 📊 장 마감 제미나이 매크로 시황 분석")
+
 if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
     if client:
         with st.spinner("30년차 트레이더가 최신 뉴스 및 글로벌 매크로 지표를 분석 중입니다..."):
@@ -324,13 +336,12 @@ if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
                 """
 
                 res = client.models.generate_content(
-                    model="gemini-3.6-flash", # 사용 중이신 모델명 유지
+                    model="gemini-3.6-flash",
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         system_instruction=TRADER_SYSTEM_INSTRUCTION,
                         temperature=0.5,
-                        # 🔥 핵심: 구글 검색 엔진 연결하여 최신 정보 습득
-                        tools=[{"google_search": {}}]
+                        tools=[{"google_search": {}}]  # 최신 정보 검색 기능
                     )
                 )
                 st.info(res.text)
@@ -340,7 +351,7 @@ if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
                 st.exception(e)
     else:
         st.error("Gemini API 키가 연결되지 않았습니다.")
-        
+
 st.markdown("---")
 
 # ---------------------------------------------------------
