@@ -306,44 +306,33 @@ c4.metric("수익률", f"{total_roi:.2f} %", delta=f"{total_roi:.2f}%")
 
 st.markdown("---")
 
-# ---------------------------------------------------------
 # 2. 시장 지수 및 Gemini 시황 분석 UI
-# ---------------------------------------------------------
 st.subheader("🌐 대표 시장 지수")
 indices = fetch_market_indices()
 idx_cols = st.columns(len(indices))
-
-# 지수(나스닥 등)와 환율/이더리움 화면에 렌더링
 for idx, (name, val) in enumerate(indices.items()):
     idx_cols[idx].metric(label=name, value=f"{val['price']:,.2f}", delta=f"{val['change']:.2f}%")
 
-st.markdown("---")
-st.markdown("### 📊 장 마감 제미나이 매크로 시황 분석")
-if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
+st.markdown("### 📊 장 마감 제미나이 트레이더 시황 분석")
+if st.button("제미나이 AI 지수 분석 실행"):
     if client:
-        with st.spinner("30년차 트레이더가 최신 글로벌 매크로 지표를 분석 중입니다..."):
+        with st.spinner("30년차 트레이더 분석 중..."):
             try:
                 prompt = f"""
-                현재 주요 시장 지수 현황: {indices}
+                지수 현황: {indices}
 
-                위 지수 데이터를 바탕으로 오늘 시장에 영향을 미친 핵심 요인들을 분석해라.
-                아래 3가지 목차로 나누어 전문 트레이더의 시각으로 작성해라:
-
-                1. 🌐 글로벌 매크로 현황
-                2. 📰 오늘의 핵심 마켓 뷰
-                3. 💡 트레이더의 인사이트
+                오늘 장 마감 후 시장 요인을
+                3줄로 날카롭게 요약해라.
                 """
 
                 res = client.models.generate_content(
-                    model="gemini-3.6-flash", # 질문자님의 기존 모델명 유지
+                    model="gemini-3.6-flash",
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        system_instruction=TRADER_SYSTEM_INSTRUCTION,
-                        temperature=0.5,
-                        max_output_tokens=500 # 1500에서 500으로 축소하여 자원 절약
-                        # tools 부분 삭제하여 API 과부하 방지
+                        system_instruction=TRADER_SYSTEM_INSTRUCTION
                     )
                 )
+
                 st.info(res.text)
 
             except Exception as e:
@@ -351,6 +340,8 @@ if st.button("제미나이 AI 지수 & 매크로 분석 실행"):
                 st.exception(e)
     else:
         st.error("Gemini API 키가 연결되지 않았습니다.")
+
+st.markdown("---")
 
 # ---------------------------------------------------------
 # 3. 차트 시각화 UI (네이버 증권 스타일: 초기 확대 + 좌우 드래그 + 휠 스크롤)
@@ -457,38 +448,31 @@ st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 # ---------------------------------------------------------
 # 3-1. 선택 종목 Gemini AI 진단 섹션
 # ---------------------------------------------------------
-if st.button(f"🎯 {selected_stock} 심층 AI 진단 받아보기", key=f"btn_{selected_stock}"):
+st.markdown(f"#### 🤖 30년차 트레이더의 [{selected_stock}] 기술적 매매 진단")
+
+if st.button(f"🎯 {selected_stock} AI 진단 받아보기", key=f"btn_{selected_stock}"):
     if client:
-        with st.spinner(f"최신 뉴스와 차트를 융합하여 {selected_stock}를 정밀 분석 중입니다... (약 10~20초 소요)"):
+        with st.spinner(f"30년차 트레이더가 {selected_stock} 차트를 정밀 분석 중입니다..."):
             latest_data = df_selected.iloc[-1]
             pos = trader.positions.get(selected_stock, None)
-            pos_info = f"보유 중 (수량: {pos['qty']:.4f}, 평단가: {int(pos['avg_price']):,} 원)" if pos else "현재 미보유"
+            pos_info = f"보유 중 (수량: {pos['qty']:.4f}, 평단가: {pos['avg_price']:.2f})" if pos else "현재 미보유"
 
             prompt = f"""
-            [분석 대상 종목: {selected_stock}]
+            [종목명: {selected_stock}]
             - 현재 보유 상태: {pos_info}
-            - 기술적 데이터:
-              * 현재가: {int(curr_price):,} 원
-              * 5일 이동평균선: {int(latest_data['MA5']):,} 원
-              * 20일 이동평균선: {int(latest_data['MA20']):,} 원
-              * 볼린저 밴드 상한: {int(latest_data['BB_Upper']):,} 원 / 하한: {int(latest_data['BB_Lower']):,} 원
-              * 금일 거래량: {latest_data['Volume']:,} (90일 평균: {latest_data['Vol_Avg_90']:,.0f})
-              * 주요 매물대 상단 가격: {int(vp_top_selected):,} 원
+            - 현재가: {curr_price:,.2f}
+            - 5일 이동평균선: {latest_data['MA5']:,.2f}
+            - 20일 이동평균선: {latest_data['MA20']:,.2f}
+            - 볼린저 밴드 상한선: {latest_data['BB_Upper']:,.2f} / 하한선: {latest_data['BB_Lower']:,.2f}
+            - 금일 거래량: {latest_data['Volume']:,} (90일 평균 거래량: {latest_data['Vol_Avg_90']:,.0f})
+            - 주요 매물대 상단 가격: {vp_top_selected:,.2f}
 
-            너는 연 목표수익률 200%의 30년차 월스트리트 전문 트레이더다.
-            반드시 '구글 검색'을 사용하여 {selected_stock}와 관련된 가장 최근의 뉴스, 실적 발표, 파이프라인, 거시경제(금리 등) 영향을 파악한 뒤, 
-            제공된 기술적 차트 지표와 결합하여 아래의 리포트 형식으로 상세히 분석해라.
-
-            [리포트 양식]
-            1. 📰 기본적 분석 (뉴스 & 매크로 모멘텀)
-               - 최근 발생한 핵심 호재/악재 뉴스 요약
-               - 금리 등 거시경제가 해당 종목에 미치는 영향
-            2. 📈 기술적 분석 (차트 및 수급)
-               - 이동평균선, 볼린저 밴드, 매물대 및 거래량을 통한 현재 주가 위치 진단
-            3. ⚔️ 매매 판단 (BUY / SELL / HOLD) 및 추천 비중
-               - 명확한 포지션 제시 및 전체 계좌 대비 추천 비중(%)
-            4. 🎯 단기 대응 전략
-               - 목표가, 손절가 및 구체적인 시나리오 기반의 행동 지침
+            너는 연 목표수익률 200%를 목표로 하는 30년차 공격적 전문 트레이더이다. 
+            위 지표 데이터를 분석하여 아래 형식으로 짧고 명확하게 답변해라:
+            
+            1. [매매 판단]: 매수(BUY) / 매도(SELL) / 관망(HOLD) 중 택1
+            2. [추천 투자 비중]: 전체 계좌 잔고의 % 지정
+            3. [트레이딩 사유 & 전략]: 2문장 이내로 핵심 기술적 근거와 대응 전략 제시
             """
 
             res = client.models.generate_content(
@@ -496,15 +480,11 @@ if st.button(f"🎯 {selected_stock} 심층 AI 진단 받아보기", key=f"btn_{
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=TRADER_SYSTEM_INSTRUCTION,
-                    max_output_tokens=1500, # 상세한 답변을 위해 350 -> 1500으로 대폭 상향
-                    temperature=0.5,
-                    # 🔥 핵심: 구글 검색을 통해 해당 종목 최신 기사 크롤링
-                    tools=[{"google_search": {}}]
+                    max_output_tokens=350,
+                    temperature=0.4
                 )
             )
-            
-            # 분석 결과 출력
-            st.markdown(res.text)
+            st.info(res.text)
     else:
         st.error("Gemini API 키가 연결되지 않았습니다.")
 
