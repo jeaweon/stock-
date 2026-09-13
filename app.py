@@ -248,18 +248,18 @@ class SimulatedTrader:
 
 # 세션 상태 관리
 # ---------------------------------------------------------
-# 세션 상태 관리 및 초기화 기능
 # ---------------------------------------------------------
-# 사이드바에 계좌 초기화 버튼 추가
+# 세션 상태 관리 및 완벽 초기화 (파일 삭제 포함)
+# ---------------------------------------------------------
 with st.sidebar:
-    if st.button("🔄 모의투자 계좌 초기화"):
+    if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
+        # 1. 저장된 세이브 파일 지우기
+        if os.path.exists("trader_state.json"):
+            os.remove("trader_state.json")
+        # 2. 현재 메모리(세션) 지우기
         st.session_state.clear()
-        st.rerun() # 최신 Streamlit 버전 (구버전일 경우 st.experimental_rerun())
-
-if "trader" not in st.session_state:
-    st.session_state.trader = SimulatedTrader()
-
-trader = st.session_state.trader
+        # 3. 화면 새로고침
+        st.rerun()
 
 if "trader" not in st.session_state:
     st.session_state.trader = SimulatedTrader()
