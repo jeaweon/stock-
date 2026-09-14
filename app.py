@@ -115,7 +115,7 @@ def fetch_market_indices():
     return data
 
 # ---------------------------------------------------------
-# 가상 매매 엔진 Class (영구 보존 버전)
+# 가상 매매 엔진 Class (영구 보존 + 당일 중복매매 방지 버전)
 # ---------------------------------------------------------
 class SimulatedTrader:
     def __init__(self, initial_balance=20000000, save_file="trader_state.json"):
@@ -124,12 +124,9 @@ class SimulatedTrader:
         self.cash = initial_balance
         self.positions = {}
         self.trade_logs = []
-        
-        # 객체가 생성될 때 저장된 파일이 있으면 불러오기
         self._load_from_file()
 
     def _save_to_file(self):
-        """현재 계좌 상태와 매매 일지를 JSON 파일로 저장"""
         state = {
             "cash": self.cash,
             "initial_balance": self.initial_balance,
@@ -140,7 +137,6 @@ class SimulatedTrader:
             json.dump(state, f, ensure_ascii=False, indent=4)
 
     def _load_from_file(self):
-        """저장된 JSON 파일에서 계좌 상태와 매매 일지 불러오기"""
         if os.path.exists(self.save_file):
             with open(self.save_file, "r", encoding="utf-8") as f:
                 state = json.load(f)
@@ -151,6 +147,10 @@ class SimulatedTrader:
 
     def execute_strategy(self, symbol, df, vp_top):
         latest = df.iloc[-1]
+        
+        # 🚨 [추가] 현재 캔들의 날짜를 문자열(YYYY-MM-DD)로 추출
+        current_date_str = str(latest.name).split()[0]
+        
         price = latest['Close']
         ma5, ma20 = latest['MA5'], latest['MA20']
         vol, vol_avg_90 = latest['Volume'], latest['Vol_Avg_90']
@@ -158,24 +158,29 @@ class SimulatedTrader:
         
         pos = self.positions.get(symbol, {'qty': 0, 'avg_price': 0.0, 'bb_stage': 0})
         
+        # 🚨 [핵심 방어 로직] 오늘(current_date_str) 이미 매수/매도를 진행했다면 더 이상 거래하지 않음
+        if pos.get('last_trade_date') == current_date_str:
+            return
+            
         # 볼린저 밴드 하한선 물타기 로직
         if latest['Low'] <= bb_lower:
-            stage = pos['bb_stage']
+            stage = pos.get('bb_stage', 0)
             if stage == 0:
-                self._buy(symbol, price, self.cash * 0.30, "BB 1차 하한선 (잔고 30% / 목표익절 +3%)", 1)
+                self._buy(symbol, price, self.cash * 0.30, "BB 1차 하한선 (잔고 30% / 목표익절 +3%)", 1, current_date_str)
                 return
             elif stage == 1:
-                self._buy(symbol, price, self.cash * 0.50, "BB 2차 하한선 (잔고 50% / 목표익절 +1%)", 2)
+                self._buy(symbol, price, self.cash * 0.50, "BB 2차 하한선 (잔고 50% / 목표익절 +1%)", 2, current_date_str)
                 return
             elif stage >= 2:
-                self._buy(symbol, price, self.cash * 0.50, "BB 3차 하한선 (잔고 50% / 목표익절 0%)", 3)
+                self._buy(symbol, price, self.cash * 0.50, "BB 3차 하한선 (잔고 50% / 목표익절 0%)", 3, current_date_str)
                 return
         
-        if pos['qty'] > 0 and pos['bb_stage'] > 0:
-            roi = ((price - pos['avg_price']) / pos['avg_price']) * 100
-            target = {1: 3.0, 2: 1.0, 3: 0.0}.get(pos['bb_stage'], 0.0)
+        # 볼린저 밴드 목표 달성 익절
+        if pos.get('qty', 0) > 0 and pos.get('bb_stage', 0) > 0:
+            roi = ((price - pos.get('avg_price', 1)) / pos.get('avg_price', 1)) * 100
+            target = {1: 3.0, 2: 1.0, 3: 0.0}.get(pos.get('bb_stage', 0), 0.0)
             if roi >= target:
-                self._sell(symbol, price, f"BB {pos['bb_stage']}단계 목표 수익률({target}%) 달성 매도")
+                self._sell(symbol, price, f"BB {pos.get('bb_stage', 0)}단계 목표 수익률({target}%) 달성 매도", current_date_str)
                 return
 
         # VCP 및 매물대 풀백 등 신규 매수 조건
@@ -189,50 +194,56 @@ class SimulatedTrader:
         cond1 = (price > vp_top) and (ma5 > ma20)
         cond2 = (vol > vol_avg_90 * 1.5) and (ma5 > ma20)
         
-        if pos['qty'] == 0:
+        if pos.get('qty', 0) == 0:
             if cond_vcp:
-                self._buy(symbol, price, self.cash * 0.40, "🔥 VCP 돌파: BB 극도 수축 후 3배 거래량 폭발", 0)
+                self._buy(symbol, price, self.cash * 0.40, "🔥 VCP 돌파: BB 극도 수축 후 3배 거래량 폭발", 0, current_date_str)
             elif cond_pullback:
-                self._buy(symbol, price, self.cash * 0.35, "🎯 매물대 풀백: 핵심 저항 지지 후 첫 양봉 반등", 0)
+                self._buy(symbol, price, self.cash * 0.35, "🎯 매물대 풀백: 핵심 저항 지지 후 첫 양봉 반등", 0, current_date_str)
             elif cond1:
-                self._buy(symbol, price, self.cash * 0.20, "매물대 돌파 및 MA5 > MA20", 0)
+                self._buy(symbol, price, self.cash * 0.20, "매물대 돌파 및 MA5 > MA20", 0, current_date_str)
             elif cond2:
-                self._buy(symbol, price, self.cash * 0.20, "거래량 1.5배 돌파 및 MA5 > MA20", 0)
+                self._buy(symbol, price, self.cash * 0.20, "거래량 1.5배 돌파 및 MA5 > MA20", 0, current_date_str)
                 
-        elif pos['qty'] > 0 and pos['bb_stage'] == 0:
+        elif pos.get('qty', 0) > 0 and pos.get('bb_stage', 0) == 0:
             if ma20 > ma5:
-                self._sell(symbol, price, "MA20 > MA5 데드크로스 매도")
+                self._sell(symbol, price, "MA20 > MA5 데드크로스 매도", current_date_str)
 
-    def _buy(self, symbol, price, amount, reason, bb_stage):
+    # 🚨 _buy 함수 인자에 trade_date 추가
+    def _buy(self, symbol, price, amount, reason, bb_stage, trade_date):
         if amount < 10000: return
         qty = amount / price
         pos = self.positions.get(symbol, {'qty': 0, 'avg_price': 0.0, 'bb_stage': 0})
         
-        entry_strategy = reason if pos['qty'] == 0 else pos.get('entry_strategy', reason)
-        total_qty = pos['qty'] + qty
-        total_cost = (pos['qty'] * pos['avg_price']) + amount
+        entry_strategy = reason if pos.get('qty', 0) == 0 else pos.get('entry_strategy', reason)
+        total_qty = pos.get('qty', 0) + qty
+        total_cost = (pos.get('qty', 0) * pos.get('avg_price', 0.0)) + amount
         
         self.cash -= amount
+        
+        # 🚨 포지션 정보에 최근 거래 날짜(last_trade_date) 저장
         self.positions[symbol] = {
             'qty': total_qty, 
             'avg_price': total_cost / total_qty, 
             'bb_stage': bb_stage, 
-            'entry_strategy': entry_strategy
+            'entry_strategy': entry_strategy,
+            'last_trade_date': trade_date 
         }
         
         self.trade_logs.append({
+            "일자": trade_date,  # 🚨 매매 일지에도 날짜 추가
             "타입": "매수", "종목": symbol, "가격": round(price, 2), 
             "수량": round(qty, 4), "수익률(%)": 0.0, 
             "진입 전략": entry_strategy, "상세 사유": reason
         })
-        self._save_to_file()  # 상태 변경 후 즉시 저장
+        self._save_to_file()
 
-    def _sell(self, symbol, price, reason):
+    # 🚨 _sell 함수 인자에 trade_date 추가
+    def _sell(self, symbol, price, reason, trade_date):
         pos = self.positions.get(symbol)
-        if not pos or pos['qty'] == 0: return
+        if not pos or pos.get('qty', 0) == 0: return
         
-        sell_val = pos['qty'] * price
-        cost_val = pos['qty'] * pos['avg_price']
+        sell_val = pos.get('qty', 0) * price
+        cost_val = pos.get('qty', 0) * pos.get('avg_price', 0.0)
         roi = ((sell_val - cost_val) / cost_val) * 100
         self.cash += sell_val
         
@@ -240,11 +251,12 @@ class SimulatedTrader:
         del self.positions[symbol]
         
         self.trade_logs.append({
+            "일자": trade_date,  # 🚨 매매 일지에도 날짜 추가
             "타입": "매도", "종목": symbol, "가격": round(price, 2), 
-            "수량": round(pos['qty'], 4), "수익률(%)": round(roi, 2), 
+            "수량": round(pos.get('qty', 0), 4), "수익률(%)": round(roi, 2), 
             "진입 전략": entry_strategy, "상세 사유": reason
         })
-        self._save_to_file()  # 상태 변경 후 즉시 저장
+        self._save_to_file()
 
 # 세션 상태 관리
 # ---------------------------------------------------------
