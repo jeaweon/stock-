@@ -38,15 +38,18 @@ TRADER_SYSTEM_INSTRUCTION = """
 # ---------------------------------------------------------
 @st.cache_data
 def fetch_usd_krw():
-    """원/달러 환율 데이터를 가져오는 함수"""
+    """원/달러 환율 120일치 데이터를 가져오는 함수"""
     fx_df = yf.download("KRW=X", period="120d", interval="1d")
     if isinstance(fx_df.columns, pd.MultiIndex):
         fx_df.columns = fx_df.columns.droplevel(1)
         
-    # 날짜 인덱스의 시간대(timezone) 제거 (주식/코인 데이터와 병합 시 오류 방지)
     if fx_df.index.tz is not None:
         fx_df.index = fx_df.index.tz_localize(None)
         
+    # 🚨 수정: 빈칸 처리 유연화
+    fx_df = fx_df.dropna(how='all') 
+    fx_df = fx_df.ffill()
+    
     return fx_df['Close']
 
 @st.cache_data
@@ -70,18 +73,20 @@ def fetch_stock_data(symbol_name):
     df = yf.download(ticker, period="120d", interval="1d")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
-    df = df.dropna()
+        
+    # 🚨 핵심 수정: 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 빈칸만 앞의 데이터로 채움
+    df = df.dropna(how='all')  # 모든 데이터가 빈칸일 때만 줄 삭제
+    df = df.ffill()            # 일부 비어있는 값(예: 거래량)은 직전 값으로 채워서 보존
     
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
 
-    # 2. 환율 데이터 가져와서 날짜별로 매칭 (주말 코인장은 금요일 환율로 채움)
+    # 2. 환율 데이터 가져와서 날짜별로 매칭
     fx_series = fetch_usd_krw()
     df = df.join(fx_series.rename("FX_Rate"), how="left")
     df['FX_Rate'] = df['FX_Rate'].ffill().bfill() 
 
-    # 3. 핵심: 달러(USD) 가격 * 원/달러 환율 = 실제 원화(KRW) 가격으로 변환
-    # 이더리움(약 3000달러 * 1350원 = 약 400만 원)으로 정상 변환됩니다.
+    # 3. 달러(USD) 가격 * 원/달러 환율 = 실제 원화(KRW) 가격으로 변환
     for col in ['Open', 'High', 'Low', 'Close']:
         df[col] = df[col] * df['FX_Rate']
 
@@ -100,6 +105,7 @@ def fetch_stock_data(symbol_name):
     vp_top = bin_edges[np.argmax(counts) + 1]
 
     return df_90, vp_top
+    
 @st.cache_data
 def fetch_market_indices():
     tickers = {"나스닥": "^IXIC", "S&P500": "^GSPC", "코스피": "^KS11", "이더리움": "ETH-USD", "원/달러 환율": "KRW=X"}
