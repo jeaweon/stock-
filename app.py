@@ -58,7 +58,7 @@ def fetch_stock_data(symbol_name):
         "이더리움": "ETH-USD",
         "SOXL": "SOXL",
         "KORU": "KORU",
-        "URAA": "URA",
+        "URAA": "URAA",
         "팔란티어": "PLTR",
         "로켓 랩": "RKLB",
         "슈퍼 마이크로 컴퓨터": "SMCI",
