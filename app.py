@@ -264,14 +264,13 @@ class SimulatedTrader:
         })
         self._save_to_file()
 
-# 세션 상태 관리
 # ---------------------------------------------------------
-# 세션 상태 관리 및 완벽 초기화 (데이터 수동 갱신 포함)
+# 세션 상태 관리 및 완벽 초기화 (데이터 백업/복구 기능 추가)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown("### ⚙️ 시스템 관리")
     
-    # 1. 주가 데이터 수동 갱신 버튼 (추가됨)
+    # 1. 주가 데이터 수동 갱신 버튼
     if st.button("📈 최신 주가 데이터 불러오기"):
         # 저장된 데이터 캐시(기억)를 모두 강제 삭제
         fetch_usd_krw.clear()
@@ -281,8 +280,35 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
+    st.markdown("### 💾 데이터 백업 및 복구")
+    st.caption("서버 초기화 대비용: 내 컴퓨터에 저장하고 다시 불러오기")
+
+    # [신규] 2-1. 백업 파일 다운로드
+    if os.path.exists("trader_state.json"):
+        with open("trader_state.json", "r", encoding="utf-8") as f:
+            save_data = f.read()
+        st.download_button(
+            label="📥 현재 계좌 상태 다운로드 (백업)",
+            data=save_data,
+            file_name="trader_state.json",
+            mime="application/json",
+            help="오늘 장을 마감할 때 이 버튼을 눌러 내 컴퓨터에 데이터를 안전하게 보관하세요."
+        )
+
+    # [신규] 2-2. 백업 파일 업로드(복구)
+    uploaded_file = st.file_uploader("📤 백업 파일 복구 (업로드)", type=["json"])
+    if uploaded_file is not None:
+        if st.button("데이터 복구 실행"):
+            # 업로드한 파일을 서버의 'trader_state.json'으로 덮어쓰기
+            with open("trader_state.json", "wb") as f:
+                f.write(uploaded_file.getvalue())
+            # 세션 강제 초기화 후 새로고침하여 복구된 파일 읽어오기
+            st.session_state.clear()
+            st.rerun()
+
+    st.markdown("---")
     
-    # 2. 계좌 완전 초기화 버튼 (기존 유지)
+    # 3. 계좌 완전 초기화 버튼
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
         if os.path.exists("trader_state.json"):
             os.remove("trader_state.json")
