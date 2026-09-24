@@ -11,7 +11,7 @@ from google import genai
 from google.genai import types
 
 # ---------------------------------------------------------
-# Streamlit 기본 설정 & 1시간(3600초) 자동 새로고침 설정
+# Streamlit 기본 설정 
 # ---------------------------------------------------------
 st.set_page_config(page_title="Gemini 30년차 트레이더 모의투자", layout="wide")
 st.title("⚡ Gemini 30년차 전문 트레이더 모의투자 시스템")
@@ -46,7 +46,7 @@ def fetch_usd_krw():
     if fx_df.index.tz is not None:
         fx_df.index = fx_df.index.tz_localize(None)
         
-    # 🚨 수정: 빈칸 처리 유연화
+    # 빈칸 처리 유연화
     fx_df = fx_df.dropna(how='all') 
     fx_df = fx_df.ffill()
     
@@ -58,7 +58,7 @@ def fetch_stock_data(symbol_name):
         "이더리움": "ETH-USD",
         "SOXL": "SOXL",
         "KORU": "KORU",
-        "URAA": "URAA",
+        "URAA": "URAA", # URAA로 요청된 티커 유지
         "팔란티어": "PLTR",
         "로켓 랩": "RKLB",
         "슈퍼 마이크로 컴퓨터": "SMCI",
@@ -74,9 +74,9 @@ def fetch_stock_data(symbol_name):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
         
-    # 🚨 핵심 수정: 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 빈칸만 앞의 데이터로 채움
-    df = df.dropna(how='all')  # 모든 데이터가 빈칸일 때만 줄 삭제
-    df = df.ffill()            # 일부 비어있는 값(예: 거래량)은 직전 값으로 채워서 보존
+    # 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 빈칸만 앞의 데이터로 채움
+    df = df.dropna(how='all')  
+    df = df.ffill()            
     
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
@@ -111,10 +111,11 @@ def fetch_market_indices():
     tickers = {"나스닥": "^IXIC", "S&P500": "^GSPC", "코스피": "^KS11", "이더리움": "ETH-USD", "원/달러 환율": "KRW=X"}
     data = {}
     for name, sym in tickers.items():
-        t_data = yf.Ticker(sym).history(period="2d")
+        # 주말 휴장을 고려해 넉넉히 5d로 설정하여 0.00 오류 방지
+        t_data = yf.Ticker(sym).history(period="5d")
         if len(t_data) >= 2:
-            close = t_data['Close'].iloc[-1]
-            prev = t_data['Close'].iloc[-2]
+            close = float(t_data['Close'].iloc[-1])
+            prev = float(t_data['Close'].iloc[-2])
             data[name] = {"price": close, "change": ((close - prev) / prev) * 100}
         else:
             data[name] = {"price": 0.0, "change": 0.0}
@@ -154,7 +155,7 @@ class SimulatedTrader:
     def execute_strategy(self, symbol, df, vp_top):
         latest = df.iloc[-1]
         
-        # 🚨 [추가] 현재 캔들의 날짜를 문자열(YYYY-MM-DD)로 추출
+        # 현재 캔들의 날짜를 문자열(YYYY-MM-DD)로 추출
         current_date_str = str(latest.name).split()[0]
         
         price = latest['Close']
@@ -164,7 +165,7 @@ class SimulatedTrader:
         
         pos = self.positions.get(symbol, {'qty': 0, 'avg_price': 0.0, 'bb_stage': 0})
         
-        # 🚨 [핵심 방어 로직] 오늘(current_date_str) 이미 매수/매도를 진행했다면 더 이상 거래하지 않음
+        # [핵심 방어 로직] 오늘 이미 매수/매도를 진행했다면 더 이상 거래하지 않음
         if pos.get('last_trade_date') == current_date_str:
             return
             
@@ -214,7 +215,6 @@ class SimulatedTrader:
             if ma20 > ma5:
                 self._sell(symbol, price, "MA20 > MA5 데드크로스 매도", current_date_str)
 
-    # 🚨 _buy 함수 인자에 trade_date 추가
     def _buy(self, symbol, price, amount, reason, bb_stage, trade_date):
         if amount < 10000: return
         qty = amount / price
@@ -226,7 +226,6 @@ class SimulatedTrader:
         
         self.cash -= amount
         
-        # 🚨 포지션 정보에 최근 거래 날짜(last_trade_date) 저장
         self.positions[symbol] = {
             'qty': total_qty, 
             'avg_price': total_cost / total_qty, 
@@ -236,14 +235,13 @@ class SimulatedTrader:
         }
         
         self.trade_logs.append({
-            "일자": trade_date,  # 🚨 매매 일지에도 날짜 추가
+            "일자": trade_date,
             "타입": "매수", "종목": symbol, "가격": round(price, 2), 
             "수량": round(qty, 4), "수익률(%)": 0.0, 
             "진입 전략": entry_strategy, "상세 사유": reason
         })
         self._save_to_file()
 
-    # 🚨 _sell 함수 인자에 trade_date 추가
     def _sell(self, symbol, price, reason, trade_date):
         pos = self.positions.get(symbol)
         if not pos or pos.get('qty', 0) == 0: return
@@ -257,7 +255,7 @@ class SimulatedTrader:
         del self.positions[symbol]
         
         self.trade_logs.append({
-            "일자": trade_date,  # 🚨 매매 일지에도 날짜 추가
+            "일자": trade_date,
             "타입": "매도", "종목": symbol, "가격": round(price, 2), 
             "수량": round(pos.get('qty', 0), 4), "수익률(%)": round(roi, 2), 
             "진입 전략": entry_strategy, "상세 사유": reason
@@ -270,9 +268,7 @@ class SimulatedTrader:
 with st.sidebar:
     st.markdown("### ⚙️ 시스템 관리")
     
-    # 1. 주가 데이터 수동 갱신 버튼
     if st.button("📈 최신 주가 데이터 불러오기"):
-        # 저장된 데이터 캐시(기억)를 모두 강제 삭제
         fetch_usd_krw.clear()
         fetch_stock_data.clear()
         fetch_market_indices.clear()
@@ -283,7 +279,7 @@ with st.sidebar:
     st.markdown("### 💾 데이터 백업 및 복구")
     st.caption("서버 초기화 대비용: 내 컴퓨터에 저장하고 다시 불러오기")
 
-    # [신규] 2-1. 백업 파일 다운로드
+    # 백업 파일 다운로드
     if os.path.exists("trader_state.json"):
         with open("trader_state.json", "r", encoding="utf-8") as f:
             save_data = f.read()
@@ -295,20 +291,17 @@ with st.sidebar:
             help="오늘 장을 마감할 때 이 버튼을 눌러 내 컴퓨터에 데이터를 안전하게 보관하세요."
         )
 
-    # [신규] 2-2. 백업 파일 업로드(복구)
+    # 백업 파일 업로드(복구)
     uploaded_file = st.file_uploader("📤 백업 파일 복구 (업로드)", type=["json"])
     if uploaded_file is not None:
         if st.button("데이터 복구 실행"):
-            # 업로드한 파일을 서버의 'trader_state.json'으로 덮어쓰기
             with open("trader_state.json", "wb") as f:
                 f.write(uploaded_file.getvalue())
-            # 세션 강제 초기화 후 새로고침하여 복구된 파일 읽어오기
             st.session_state.clear()
             st.rerun()
 
     st.markdown("---")
     
-    # 3. 계좌 완전 초기화 버튼
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
         if os.path.exists("trader_state.json"):
             os.remove("trader_state.json")
@@ -388,7 +381,7 @@ if st.button("제미나이 AI 지수 분석 실행"):
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 3. 차트 시각화 UI (네이버 증권 스타일: 초기 확대 + 좌우 드래그 + 휠 스크롤)
+# 3. 차트 시각화 UI 
 # ---------------------------------------------------------
 st.subheader("📈 설정 종목 일봉 분석 (최근 90일)")
 selected_stock = st.selectbox("종목 선택", target_symbols)
@@ -403,7 +396,6 @@ max_price = df_selected['High'].max()
 min_idx = df_selected['Low'].idxmin()
 min_price = df_selected['Low'].min()
 
-# 1. 초기 줌 범위 설정 (전체 90일 데이터 중 최근 30일 봉만 확대)
 initial_start_date = df_selected.index[-30]
 initial_end_date = df_selected.index[-1]
 
@@ -413,17 +405,14 @@ st.metric(
     delta=f"{price_change:+.2f}%"
 )
 
-# (기존) fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.75, 0.25])
-
-# 👇 아래 코드로 변경 (거래량 창 높이를 기존의 절반 수준인 12%~15%로 축소)
 fig = make_subplots(
     rows=2, cols=1, 
     shared_xaxes=True, 
     vertical_spacing=0.03, 
-    row_heights=[0.88, 0.12]  # 캔들 88%, 거래량 12% 비율로 할당
+    row_heights=[0.88, 0.12]  
 )
 
-# 캔들스틱 (네이버 증권 스타일: 상승=빨강 #e15241, 하락=파랑 #267af3)
+# 캔들스틱 
 fig.add_trace(go.Candlestick(
     x=df_selected.index,
     open=df_selected['Open'], high=df_selected['High'],
@@ -442,7 +431,7 @@ fig.add_trace(go.Scatter(x=df_selected.index, y=df_selected['BB_Lower'], line=di
 # 주요 매물대 라인
 fig.add_hline(y=vp_top_selected, line_color="#8e8e93", line_dash="dot", annotation_text=f"매물대 상단 ({vp_top_selected:,.2f})", row=1, col=1)
 
-# 최고가 / 최저가 주석 표시
+# 최고가 / 최저가 주석 
 fig.add_annotation(
     x=max_idx, y=max_price, text=f"최고 {max_price:,.2f}",
     showarrow=True, arrowhead=2, arrowcolor="#e15241", ax=0, ay=-25, row=1, col=1
@@ -457,7 +446,7 @@ vol_colors = ['#e15241' if c >= o else '#267af3' for c, o in zip(df_selected['Cl
 fig.add_trace(go.Bar(x=df_selected.index, y=df_selected['Volume'], name="거래량", marker_color=vol_colors), row=2, col=1)
 fig.add_trace(go.Scatter(x=df_selected.index, y=df_selected['Vol_Avg_90'], line=dict(color='#ff3b30', width=1), name="90일 평균 거래량"), row=2, col=1)
 
-# 2. 레이아웃 및 마우스 드래그(Pan) 모드 설정 (범례 및 말풍선 글자색 추가)
+# 레이아웃 및 디자인
 fig.update_layout(
     xaxis_rangeslider_visible=False,
     height=850,
@@ -465,9 +454,9 @@ fig.update_layout(
     margin=dict(l=20, r=20, t=30, b=20),
     plot_bgcolor='#ffffff',
     paper_bgcolor='#ffffff',
-    font=dict(color='#000000'),             # 기본 폰트 검은색
-    legend=dict(font=dict(color='#000000')), # 👈 우측 상단 지표 설명(범례) 검은색 강제 지정
-    hoverlabel=dict(                         # 👈 마우스 올렸을 때 뜨는 정보창 배경/글자색 지정
+    font=dict(color='#000000'),             
+    legend=dict(font=dict(color='#000000')), 
+    hoverlabel=dict(                         
         bgcolor='#ffffff',
         font_color='#000000',
         bordercolor='#cccccc'
@@ -475,18 +464,16 @@ fig.update_layout(
     hovermode="x unified"
 )
 
-# 3. X/Y축 표시 범위 및 눈금(Tick) 글자색 검은색으로 확정
 fig.update_xaxes(
     range=[initial_start_date, initial_end_date],
     showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
-    tickfont=dict(color='#000000')  # 👈 X축 날짜 글자색 검은색
+    tickfont=dict(color='#000000')  
 )
 fig.update_yaxes(
     showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False,
-    tickfont=dict(color='#000000')  # 👈 Y축 가격 글자색 검은색
+    tickfont=dict(color='#000000')  
 )
 
-# 4. 마우스 휠 확대/축소 옵션
 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # ---------------------------------------------------------
@@ -504,12 +491,12 @@ if st.button(f"🎯 {selected_stock} AI 진단 받아보기", key=f"btn_{selecte
             prompt = f"""
             [종목명: {selected_stock}]
             - 현재 보유 상태: {pos_info}
-            - 현재가: {curr_price:,.2f}
-            - 5일 이동평균선: {latest_data['MA5']:,.2f}
-            - 20일 이동평균선: {latest_data['MA20']:,.2f}
-            - 볼린저 밴드 상한선: {latest_data['BB_Upper']:,.2f} / 하한선: {latest_data['BB_Lower']:,.2f}
+            - 현재가: {int(curr_price):,} 원
+            - 5일 이동평균선: {int(latest_data['MA5']):,} 원
+            - 20일 이동평균선: {int(latest_data['MA20']):,} 원
+            - 볼린저 밴드 상한선: {int(latest_data['BB_Upper']):,} 원 / 하한선: {int(latest_data['BB_Lower']):,} 원
             - 금일 거래량: {latest_data['Volume']:,} (90일 평균 거래량: {latest_data['Vol_Avg_90']:,.0f})
-            - 주요 매물대 상단 가격: {vp_top_selected:,.2f}
+            - 주요 매물대 상단 가격: {int(vp_top_selected):,} 원
 
             너는 연 목표수익률 200%를 목표로 하는 30년차 공격적 전문 트레이더이다. 
             위 지표 데이터를 분석하여 아래 형식으로 짧고 명확하게 답변해라:
@@ -539,14 +526,12 @@ st.subheader("📑 주식 매매 일지 및 전략 성과 분석")
 if trader.trade_logs:
     logs_df = pd.DataFrame(trader.trade_logs)
     
-    # 탭을 나누어 매매 일지와 통계를 깔끔하게 분리
     tab1, tab2 = st.tabs(["매매 기록 전체보기", "📊 진입 전략별 승률 통계"])
     
     with tab1:
         st.dataframe(logs_df, use_container_width=True)
         
     with tab2:
-        # 매도(청산) 완료된 거래만 필터링하여 승률 계산
         sell_logs = logs_df[logs_df["타입"] == "매도"]
         if not sell_logs.empty:
             summary = sell_logs.groupby("진입 전략").agg(
@@ -558,7 +543,6 @@ if trader.trade_logs:
             
             summary["승률(%)"] = (summary["익절횟수"] / summary["총매매횟수"]) * 100
             
-            # 보기 좋게 소수점 둘째 자리 정리 및 컬럼 순서 배치
             summary = summary.round(2)
             summary = summary[["진입 전략", "총매매횟수", "승률(%)", "평균수익률", "익절횟수", "손절횟수"]]
             
