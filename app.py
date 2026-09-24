@@ -1,5 +1,6 @@
 import os
 import json
+import requests  # 🚨 새로 추가된 부분!
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -122,7 +123,7 @@ def fetch_market_indices():
     return data
 
 # ---------------------------------------------------------
-# 가상 매매 엔진 Class (영구 보존 + 당일 중복매매 방지 버전)
+# 가상 매매 엔진 Class (Gist 클라우드 영구 보존 버전)
 # ---------------------------------------------------------
 class SimulatedTrader:
     def __init__(self, initial_balance=20000000, save_file="trader_state.json"):
@@ -131,6 +132,11 @@ class SimulatedTrader:
         self.cash = initial_balance
         self.positions = {}
         self.trade_logs = []
+        
+        # 🚨 Streamlit Secrets에서 Gist 연동 키 불러오기
+        self.gist_id = st.secrets.get("GIST_ID", "")
+        self.github_token = st.secrets.get("GITHUB_TOKEN", "")
+        
         self._load_from_file()
 
     def _save_to_file(self):
@@ -140,17 +146,62 @@ class SimulatedTrader:
             "positions": self.positions,
             "trade_logs": self.trade_logs
         }
+        
+        # 1. 로컬 저장 (예비용)
         with open(self.save_file, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=4)
+            
+        # 2. 클라우드(Gist) 실시간 백업
+        if self.gist_id and self.github_token:
+            headers = {
+                "Authorization": f"token {self.github_token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            data = {
+                "files": {
+                    self.save_file: {
+                        "content": json.dumps(state, ensure_ascii=False, indent=4)
+                    }
+                }
+            }
+            try:
+                requests.patch(f"https://api.github.com/gists/{self.gist_id}", headers=headers, json=data)
+            except Exception as e:
+                print(f"Gist 백업 에러: {e}")
 
     def _load_from_file(self):
-        if os.path.exists(self.save_file):
+        state = None
+        
+        # 1. 서버 재부팅 시 가장 최신인 클라우드(Gist)에서 우선 로드
+        if self.gist_id and self.github_token:
+            headers = {
+                "Authorization": f"token {self.github_token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            try:
+                res = requests.get(f"https://api.github.com/gists/{self.gist_id}", headers=headers)
+                if res.status_code == 200:
+                    gist_data = res.json()
+                    file_content = gist_data["files"].get(self.save_file, {}).get("content")
+                    if file_content:
+                        state = json.loads(file_content)
+            except Exception as e:
+                print(f"Gist 로드 에러: {e}")
+                
+        # 2. 클라우드 로드 실패 시, 로컬에서 시도
+        if state is None and os.path.exists(self.save_file):
             with open(self.save_file, "r", encoding="utf-8") as f:
                 state = json.load(f)
-                self.cash = state.get("cash", self.initial_balance)
-                self.initial_balance = state.get("initial_balance", self.initial_balance)
-                self.positions = state.get("positions", {})
-                self.trade_logs = state.get("trade_logs", [])
+                
+        # 3. 데이터 적용
+        if state:
+            self.cash = state.get("cash", self.initial_balance)
+            self.initial_balance = state.get("initial_balance", self.initial_balance)
+            self.positions = state.get("positions", {})
+            self.trade_logs = state.get("trade_logs", [])
+
+    # ... (아래 execute_strategy, _buy, _sell 함수는 기존과 동일하게 유지) ...
+    # ⚠️ 방어 로직과 날짜 기록(trade_date) 로직 그대로 두시면 됩니다!
 
     def execute_strategy(self, symbol, df, vp_top):
         latest = df.iloc[-1]
@@ -263,12 +314,14 @@ class SimulatedTrader:
         self._save_to_file()
 
 # ---------------------------------------------------------
-# 세션 상태 관리 및 완벽 초기화 (데이터 백업/복구 기능 추가)
+# 세션 상태 관리 및 완벽 초기화 (Gist 클라우드 동기화 포함)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown("### ⚙️ 시스템 관리")
     
+    # 1. 주가 데이터 수동 갱신 버튼
     if st.button("📈 최신 주가 데이터 불러오기"):
+        # 저장된 데이터 캐시(기억)를 모두 강제 삭제
         fetch_usd_krw.clear()
         fetch_stock_data.clear()
         fetch_market_indices.clear()
@@ -277,34 +330,68 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 💾 데이터 백업 및 복구")
-    st.caption("서버 초기화 대비용: 내 컴퓨터에 저장하고 다시 불러오기")
+    st.caption("수동 백업용: 내 컴퓨터에 저장하고 다시 불러오기")
 
-    # 백업 파일 다운로드
+    # 2. 백업 파일 다운로드
     if os.path.exists("trader_state.json"):
         with open("trader_state.json", "r", encoding="utf-8") as f:
             save_data = f.read()
         st.download_button(
-            label="📥 현재 계좌 상태 다운로드 (백업)",
+            label="📥 현재 계좌 상태 다운로드 (수동 백업)",
             data=save_data,
             file_name="trader_state.json",
             mime="application/json",
-            help="오늘 장을 마감할 때 이 버튼을 눌러 내 컴퓨터에 데이터를 안전하게 보관하세요."
+            help="클라우드 동기화와 별개로 내 컴퓨터에 수동으로 백업할 때 사용하세요."
         )
 
-    # 백업 파일 업로드(복구)
-    uploaded_file = st.file_uploader("📤 백업 파일 복구 (업로드)", type=["json"])
+    # 3. 백업 파일 업로드(복구)
+    uploaded_file = st.file_uploader("📤 수동 백업 파일 복구", type=["json"])
     if uploaded_file is not None:
-        if st.button("데이터 복구 실행"):
+        if st.button("수동 데이터 복구 실행"):
+            # 업로드한 파일을 로컬에 덮어쓰기
+            file_content_bytes = uploaded_file.getvalue()
             with open("trader_state.json", "wb") as f:
-                f.write(uploaded_file.getvalue())
+                f.write(file_content_bytes)
+                
+            # 복구한 데이터를 클라우드 Gist에도 즉시 반영
+            gist_id = st.secrets.get("GIST_ID", "")
+            github_token = st.secrets.get("GITHUB_TOKEN", "")
+            if gist_id and github_token:
+                try:
+                    # bytes를 json 문자열로 디코딩
+                    decoded_str = file_content_bytes.decode('utf-8')
+                    # 올바른 json 형태인지 확인(파싱) 후 다시 문자열로 포맷팅
+                    parsed_json = json.loads(decoded_str)
+                    
+                    headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+                    data = {"files": {"trader_state.json": {"content": json.dumps(parsed_json, ensure_ascii=False, indent=4)}}}
+                    requests.patch(f"https://api.github.com/gists/{gist_id}", headers=headers, json=data)
+                except Exception as e:
+                    st.error(f"클라우드 동기화 복구 실패: {e}")
+                    
             st.session_state.clear()
             st.rerun()
 
     st.markdown("---")
     
+    # 4. 계좌 완전 초기화 버튼 (로컬 + 클라우드 리셋)
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
+        # 로컬 파일 삭제
         if os.path.exists("trader_state.json"):
             os.remove("trader_state.json")
+            
+        # 클라우드 Gist 데이터도 함께 초기화
+        gist_id = st.secrets.get("GIST_ID", "")
+        github_token = st.secrets.get("GITHUB_TOKEN", "")
+        if gist_id and github_token:
+            empty_state = {
+                "cash": 20000000, "initial_balance": 20000000, 
+                "positions": {}, "trade_logs": []
+            }
+            headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+            data = {"files": {"trader_state.json": {"content": json.dumps(empty_state)}}}
+            requests.patch(f"https://api.github.com/gists/{gist_id}", headers=headers, json=data)
+
         st.session_state.clear()
         st.rerun()
 
