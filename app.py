@@ -551,10 +551,23 @@ fig.update_layout(
     hovermode="x unified"
 )
 
-fig.update_xaxes(
-    range=[initial_start_date, initial_end_date],
-    showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
-    tickfont=dict(color='#000000')  
+# 3. X/Y축 표시 범위 및 눈금(Tick) 글자색 검은색으로 확정
+# 🚨 [추가] 코인(이더리움)은 주말 장이 열리므로 그대로 두고, 일반 주식만 주말 공백을 제거함
+if selected_stock == "이더리움":
+    fig.update_xaxes(
+        range=[initial_start_date, initial_end_date],
+        showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
+        tickfont=dict(color='#000000')
+    )
+else:
+    fig.update_xaxes(
+        range=[initial_start_date, initial_end_date],
+        showgrid=True, gridwidth=1, gridcolor='#f2f2f7',
+        tickfont=dict(color='#000000'),
+        rangebreaks=[
+            dict(bounds=["sat", "mon"])  # 토요일부터 월요일 시작 전까지의 구간을 잘라내서 캔들을 밀착시킴
+        ]
+    )  
 )
 fig.update_yaxes(
     showgrid=True, gridwidth=1, gridcolor='#f2f2f7', fixedrange=False,
