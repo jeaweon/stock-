@@ -646,17 +646,62 @@ if st.button(f"🎯 {selected_stock} AI 진단 받아보기", key=f"btn_{selecte
 
 st.markdown("---")
 
+# ---------------------------------------------------------
 # 4. 매매일지 및 전략별 성과 UI
+# ---------------------------------------------------------
 st.subheader("📑 주식 매매 일지 및 전략 성과 분석")
-if trader.trade_logs:
-    logs_df = pd.DataFrame(trader.trade_logs)
-    
-    tab1, tab2 = st.tabs(["매매 기록 전체보기", "📊 진입 전략별 승률 통계"])
-    
-    with tab1:
-        st.dataframe(logs_df, use_container_width=True)
+
+# 탭을 3개로 나누어 보유 종목(현재 수익률), 매매 기록, 통계를 분리
+tab1, tab2, tab3 = st.tabs(["💼 현재 보유 종목 (실시간 수익률)", "📜 매매 기록 전체보기", "📊 진입 전략별 승률 통계"])
+
+# [신규] 탭 1: 현재 보유 중인 종목의 실시간 수익률 표시
+with tab1:
+    if trader.positions:
+        pos_data = []
+        for sym, pos_info in trader.positions.items():
+            if pos_info['qty'] > 0:
+                # 현재 주가 데이터 가져오기
+                curr_price = stock_datas[sym][0]['Close'].iloc[-1]
+                avg_price = pos_info['avg_price']
+                qty = pos_info['qty']
+                
+                # 수익률 및 수익금 계산
+                roi = ((curr_price - avg_price) / avg_price) * 100
+                total_invested = avg_price * qty
+                total_eval_val = curr_price * qty
+                profit = total_eval_val - total_invested
+                
+                pos_data.append({
+                    "종목": sym,
+                    "보유 수량": round(qty, 4),
+                    "매수 평단가": f"{int(avg_price):,} 원",
+                    "현재가": f"{int(curr_price):,} 원",
+                    "수익금": f"{int(profit):,} 원",
+                    "현재 수익률(%)": round(roi, 2),
+                    "최근 거래일": pos_info.get('last_trade_date', '-'),
+                    "진입 전략": pos_info.get('entry_strategy', '알 수 없음')
+                })
         
-    with tab2:
+        if pos_data:
+            pos_df = pd.DataFrame(pos_data)
+            st.dataframe(pos_df, use_container_width=True)
+        else:
+            st.info("현재 보유 중인 종목이 없습니다.")
+    else:
+        st.info("현재 보유 중인 종목이 없습니다.")
+
+# 탭 2: 기존 매매(매수/매도) 기록 전체 보기
+with tab2:
+    if trader.trade_logs:
+        logs_df = pd.DataFrame(trader.trade_logs)
+        st.dataframe(logs_df, use_container_width=True)
+    else:
+        st.write("현재까지 실행된 매매 내역이 없습니다.")
+
+# 탭 3: 기존 진입 전략별 통계 (매도 완료된 내역 기준)
+with tab3:
+    if trader.trade_logs:
+        logs_df = pd.DataFrame(trader.trade_logs)
         sell_logs = logs_df[logs_df["타입"] == "매도"]
         if not sell_logs.empty:
             summary = sell_logs.groupby("진입 전략").agg(
@@ -668,11 +713,12 @@ if trader.trade_logs:
             
             summary["승률(%)"] = (summary["익절횟수"] / summary["총매매횟수"]) * 100
             
+            # 보기 좋게 소수점 둘째 자리 정리 및 컬럼 순서 배치
             summary = summary.round(2)
             summary = summary[["진입 전략", "총매매횟수", "승률(%)", "평균수익률", "익절횟수", "손절횟수"]]
             
             st.dataframe(summary, use_container_width=True)
         else:
             st.info("아직 매도(청산)가 완료된 거래가 없어 통계를 낼 수 없습니다.")
-else:
-    st.write("현재까지 실행된 매매 내역이 없습니다.")
+    else:
+        st.info("거래 내역이 없습니다.")
