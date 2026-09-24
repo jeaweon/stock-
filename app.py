@@ -59,7 +59,7 @@ def fetch_stock_data(symbol_name):
         "이더리움": "ETH-USD",
         "SOXL": "SOXL",
         "KORU": "KORU",
-        "URAA": "URAA", # URAA로 요청된 티커 유지
+        "URAA": "URAA",
         "팔란티어": "PLTR",
         "로켓 랩": "RKLB",
         "슈퍼 마이크로 컴퓨터": "SMCI",
@@ -70,12 +70,35 @@ def fetch_stock_data(symbol_name):
     }
     ticker = symbol_map.get(symbol_name, symbol_name)
     
-    # 1. 주식/코인 데이터 다운로드
-    df = yf.download(ticker, period="120d", interval="1d")
+    # 1. 정규장 일봉 데이터 다운로드
+    df = yf.download(ticker, period="120d", interval="1d", progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
         
-    # 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 빈칸만 앞의 데이터로 채움
+    # 🚨 [핵심 추가] 프리장, 애프터장, 데이장(장외) 실시간 데이터 반영
+    if symbol_name != "이더리움":  # 코인은 장외 개념이 없으므로 제외
+        try:
+            # prepost=True 옵션으로 장외 시간을 포함한 가장 최신 1분봉 데이터를 불러옴
+            ext_df = yf.download(ticker, period="1d", interval="1m", prepost=True, progress=False)
+            if isinstance(ext_df.columns, pd.MultiIndex):
+                ext_df.columns = ext_df.columns.droplevel(1)
+                
+            if not ext_df.empty and not ext_df['Close'].dropna().empty:
+                # 장외 거래가 포함된 가장 마지막 실시간 체결 가격
+                latest_ext_price = float(ext_df['Close'].dropna().iloc[-1])
+                
+                # 오늘(또는 가장 최근 일봉)의 종가를 장외 가격으로 실시간 업데이트
+                df.iloc[-1, df.columns.get_loc('Close')] = latest_ext_price
+                
+                # 장외 가격이 급등/급락하여 기존 정규장 고가/저가를 돌파했다면 캔들의 꼬리(High/Low)도 갱신
+                if latest_ext_price > df.iloc[-1]['High']:
+                    df.iloc[-1, df.columns.get_loc('High')] = latest_ext_price
+                if latest_ext_price < df.iloc[-1]['Low']:
+                    df.iloc[-1, df.columns.get_loc('Low')] = latest_ext_price
+        except Exception as e:
+            pass # 일시적인 통신 에러 발생 시 무시하고 기존 정규장 데이터 유지
+            
+    # 빈칸 처리
     df = df.dropna(how='all')  
     df = df.ffill()            
     
