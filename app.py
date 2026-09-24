@@ -73,22 +73,11 @@ def fetch_stock_data(symbol_name):
     df = yf.download(ticker, period="120d", interval="1d")
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(1)
-
-    # 🚨 핵심 수정: 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 컬럼 성격에 맞게 처리
+        
+    # 🚨 핵심 수정: 빈칸이 하나 있다고 날짜 전체를 지우지 않고, 빈칸만 앞의 데이터로 채움
     df = df.dropna(how='all')  # 모든 데이터가 빈칸일 때만 줄 삭제
-
-    # (1) 가격(OHLC)은 직전 값으로 채우는 것이 자연스러움 (거래 없는 날 = 가격 유지)
-    price_cols = [c for c in ['Open', 'High', 'Low', 'Close'] if c in df.columns]
-    df[price_cols] = df[price_cols].ffill()
-
-    # (2) 거래량은 직전 값을 복사하면 안 됨(중복 계산으로 VCP·평균거래량 지표 왜곡).
-    #     실제로 거래가 없었던 것이므로 결측치는 0으로 처리한다.
-    if 'Volume' in df.columns:
-        df['Volume'] = df['Volume'].fillna(0)
-
-    # 가격이 여전히 비어있는 선두 구간(ffill로 못 채운 날)은 지표 계산이 불가하므로 제거
-    df = df.dropna(subset=price_cols)
-
+    df = df.ffill()            # 일부 비어있는 값(예: 거래량)은 직전 값으로 채워서 보존
+    
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
 
@@ -119,24 +108,16 @@ def fetch_stock_data(symbol_name):
     
 @st.cache_data
 def fetch_market_indices():
-    # 🚨 지표별 통화 단위가 다르므로(달러/원) 라벨에 단위를 명시해 혼동을 방지
-    tickers = {
-        "나스닥": {"symbol": "^IXIC", "unit": "pt"},
-        "S&P500": {"symbol": "^GSPC", "unit": "pt"},
-        "코스피": {"symbol": "^KS11", "unit": "pt"},
-        "이더리움": {"symbol": "ETH-USD", "unit": "USD"},
-        "원/달러 환율": {"symbol": "KRW=X", "unit": "KRW"},
-    }
+    tickers = {"나스닥": "^IXIC", "S&P500": "^GSPC", "코스피": "^KS11", "이더리움": "ETH-USD", "원/달러 환율": "KRW=X"}
     data = {}
-    for name, meta in tickers.items():
-        unit = meta["unit"]
-        t_data = yf.Ticker(meta["symbol"]).history(period="2d")
+    for name, sym in tickers.items():
+        t_data = yf.Ticker(sym).history(period="2d")
         if len(t_data) >= 2:
             close = t_data['Close'].iloc[-1]
             prev = t_data['Close'].iloc[-2]
-            data[name] = {"price": close, "change": ((close - prev) / prev) * 100, "unit": unit}
+            data[name] = {"price": close, "change": ((close - prev) / prev) * 100}
         else:
-            data[name] = {"price": 0.0, "change": 0.0, "unit": unit}
+            data[name] = {"price": 0.0, "change": 0.0}
     return data
 
 # ---------------------------------------------------------
@@ -348,9 +329,7 @@ st.subheader("🌐 대표 시장 지수")
 indices = fetch_market_indices()
 idx_cols = st.columns(len(indices))
 for idx, (name, val) in enumerate(indices.items()):
-    unit = val.get("unit", "")
-    label = f"{name} ({unit})" if unit else name
-    idx_cols[idx].metric(label=label, value=f"{val['price']:,.2f}", delta=f"{val['change']:.2f}%")
+    idx_cols[idx].metric(label=name, value=f"{val['price']:,.2f}", delta=f"{val['change']:.2f}%")
 
 st.markdown("### 📊 장 마감 제미나이 트레이더 시황 분석")
 if st.button("제미나이 AI 지수 분석 실행"):
