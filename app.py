@@ -344,7 +344,6 @@ with st.sidebar:
     
     # 1. 주가 데이터 수동 갱신 버튼
     if st.button("📈 최신 주가 데이터 불러오기"):
-        # 저장된 데이터 캐시(기억)를 모두 강제 삭제
         fetch_usd_krw.clear()
         fetch_stock_data.clear()
         fetch_market_indices.clear()
@@ -371,19 +370,15 @@ with st.sidebar:
     uploaded_file = st.file_uploader("📤 수동 백업 파일 복구", type=["json"])
     if uploaded_file is not None:
         if st.button("수동 데이터 복구 실행"):
-            # 업로드한 파일을 로컬에 덮어쓰기
             file_content_bytes = uploaded_file.getvalue()
             with open("trader_state.json", "wb") as f:
                 f.write(file_content_bytes)
                 
-            # 복구한 데이터를 클라우드 Gist에도 즉시 반영
             gist_id = st.secrets.get("GIST_ID", "")
             github_token = st.secrets.get("GITHUB_TOKEN", "")
             if gist_id and github_token:
                 try:
-                    # bytes를 json 문자열로 디코딩
                     decoded_str = file_content_bytes.decode('utf-8')
-                    # 올바른 json 형태인지 확인(파싱) 후 다시 문자열로 포맷팅
                     parsed_json = json.loads(decoded_str)
                     
                     headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
@@ -395,15 +390,13 @@ with st.sidebar:
             st.session_state.clear()
             st.rerun()
 
-st.markdown("---")
+    st.markdown("---")
     
     # 4. 계좌 완전 초기화 버튼 (로컬 + 클라우드 리셋)
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
-        # 로컬 파일 삭제
         if os.path.exists("trader_state.json"):
             os.remove("trader_state.json")
             
-        # 클라우드 Gist 데이터도 함께 초기화
         gist_id = st.secrets.get("GIST_ID", "")
         github_token = st.secrets.get("GITHUB_TOKEN", "")
         if gist_id and github_token:
@@ -418,13 +411,12 @@ st.markdown("---")
         st.session_state.clear()
         st.rerun()
         
-    # 🚨 [신규 추가] 5. Secrets 연동 상태 확인용 테스트 버튼
+    # 5. Secrets 연동 상태 확인용 테스트 버튼
     if st.button("🔍 클라우드 연동 상태 체크"):
         test_gist_id = st.secrets.get("GIST_ID", None)
         test_github_token = st.secrets.get("GITHUB_TOKEN", None)
         
         if test_gist_id and test_github_token:
-            # 토큰을 이용해 Gist에 정상 접근 가능한지 찔러보기
             headers = {"Authorization": f"token {test_github_token}", "Accept": "application/vnd.github.v3+json"}
             try:
                 res = requests.get(f"https://api.github.com/gists/{test_gist_id}", headers=headers)
@@ -439,7 +431,6 @@ st.markdown("---")
         else:
             st.sidebar.error("❌ Secrets에 GIST_ID 또는 GITHUB_TOKEN 값이 빠져 있습니다!")
 
-# (기존 코드)
 if "trader" not in st.session_state:
     st.session_state.trader = SimulatedTrader()
 
