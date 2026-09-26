@@ -395,7 +395,7 @@ with st.sidebar:
             st.session_state.clear()
             st.rerun()
 
-    st.markdown("---")
+st.markdown("---")
     
     # 4. 계좌 완전 초기화 버튼 (로컬 + 클라우드 리셋)
     if st.button("🔄 모의투자 계좌 초기화 (완전 리셋)"):
@@ -417,7 +417,29 @@ with st.sidebar:
 
         st.session_state.clear()
         st.rerun()
+        
+    # 🚨 [신규 추가] 5. Secrets 연동 상태 확인용 테스트 버튼
+    if st.button("🔍 클라우드 연동 상태 체크"):
+        test_gist_id = st.secrets.get("GIST_ID", None)
+        test_github_token = st.secrets.get("GITHUB_TOKEN", None)
+        
+        if test_gist_id and test_github_token:
+            # 토큰을 이용해 Gist에 정상 접근 가능한지 찔러보기
+            headers = {"Authorization": f"token {test_github_token}", "Accept": "application/vnd.github.v3+json"}
+            try:
+                res = requests.get(f"https://api.github.com/gists/{test_gist_id}", headers=headers)
+                if res.status_code == 200:
+                    st.sidebar.success("✅ 클라우드(Gist) 연동이 완벽하게 설정되었습니다!")
+                elif res.status_code == 404:
+                    st.sidebar.error("❌ 연결 실패: Gist 아이디(URL)가 잘못되었거나, 토큰 권한이 부족합니다.")
+                else:
+                    st.sidebar.error(f"❌ 오류 코드 {res.status_code}: 설정값을 다시 확인해주세요.")
+            except Exception as e:
+                st.sidebar.error(f"❌ 네트워크 오류: {e}")
+        else:
+            st.sidebar.error("❌ Secrets에 GIST_ID 또는 GITHUB_TOKEN 값이 빠져 있습니다!")
 
+# (기존 코드)
 if "trader" not in st.session_state:
     st.session_state.trader = SimulatedTrader()
 
